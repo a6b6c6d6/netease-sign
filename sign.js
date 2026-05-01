@@ -1,4 +1,5 @@
 const COOKIE = process.env.NETEASE_COOKIE;
+const DT_WEBHOOK = process.env.DINGTALK_WEBHOOK;
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
@@ -18,6 +19,15 @@ const headers = {
   Referer: "https://music.163.com/",
 };
 
+const results = [];
+
+function record(tag, ok, detail = "") {
+  const status = ok ? "✅" : "❌";
+  const line = `${status} ${tag}${detail ? " — " + detail : ""}`;
+  results.push(line);
+  console.log(line);
+}
+
 // ── 云贝签到 ──────────────────────────────────────────
 async function cloudSignIn() {
   const csrfToken = getCookieValue("__csrf");
@@ -33,11 +43,11 @@ async function cloudSignIn() {
   const data = await res.json();
 
   if (data.code === 200) {
-    console.log(`[云贝签到] 成功, +${data.point || 0} 云贝`);
+    record("云贝签到", true, `+${data.point || 0} 云贝`);
   } else if (data.code === -2) {
-    console.log("[云贝签到] 今天已签到");
+    record("云贝签到", true, "今天已签到");
   } else {
-    console.log(`[云贝签到] 失败 code=${data.code}`);
+    record("云贝签到", false, `code=${data.code}`);
   }
 }
 
@@ -48,36 +58,25 @@ async function getVipInfo() {
     { method: "POST", headers }
   );
   const data = await res.json();
-  if (data.code !== 200) {
-    console.log("[VIP] 查询信息失败");
-    return null;
-  }
-  const ul = data.data.userLevel;
-  console.log(
-    `[VIP] 等级: ${ul.levelName}  成长值: ${ul.growthPoint}  会员状态: ${ul.latestVipStatus === 1 ? "有效" : "异常"}`
-  );
-  if (ul.maxLevel) {
-    console.log("[VIP] 已达最高等级");
-    return null;
-  }
+  if (data.code !== 200) return null;
   return data.data;
 }
 
 // ── VIP 签到 ──────────────────────────────────────────
 async function vipSignIn() {
-  const res = await fetch(
-    "https://music.163.com/api/vip-center-bff/task/sign",
-    { method: "POST", headers }
-  );
+  const res = await fetch("https://music.163.com/api/vip-center-bff/task/sign", {
+    method: "POST",
+    headers,
+  });
   const data = await res.json();
   if (data.code === 200 && data.data === true) {
-    console.log("[VIP签到] 成功");
+    record("VIP 签到", true);
   } else {
-    console.log(`[VIP签到] 失败 code=${data.code}`);
+    record("VIP 签到", false, `code=${data.code}`);
   }
 }
 
-// ── 领取所有可领成长值 ──────────────────────────────
+// ── VIP 成长值领取 ────────────────────────────────────
 async function claimRewards() {
   const res = await fetch(
     "https://music.163.com/api/vipnewcenter/app/level/task/reward/getall",
@@ -85,27 +84,71 @@ async function claimRewards() {
   );
   const data = await res.json();
   if (data.code === 200 && data.data?.result === true) {
-    console.log("[VIP奖励] 成长值领取成功");
+    record("VIP 成长值", true, "已领取");
   } else {
-    console.log(`[VIP奖励] 无可领取奖励或领取失败 code=${data.code}`);
+    record("VIP 成长值", true, "无可领取");
+  }
+}
+
+// ── 钉钉通知 ──────────────────────────────────────────
+async function sendDingTalk(levelName) {
+  if (!DT_WEBHOOK) return;
+
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  const text = [
+    `### 📋 网易云音乐签到报告`,
+    ``,
+    `**📅 ${dateStr}**${levelName ? `　　**👑 ${levelName}**` : ""}`,
+    ``,
+    `---`,
+    ``,
+    ...results.map((r) => `- ${r}`),
+    ``,
+    `---`,
+    ``,
+    `> 🤖 [netease-sign](https://github.com/a6b6c6d6/netease-sign) · GitHub Actions`,
+  ].join("\n");
+
+  const body = JSON.stringify({
+    msgtype: "markdown",
+    markdown: { title: `签到报告 ${dateStr}`, text },
+  });
+
+  const res = await fetch(DT_WEBHOOK, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+  const data = await res.json();
+  if (data.errcode === 0) {
+    console.log("[钉钉] 通知发送成功");
+  } else {
+    console.warn(`[钉钉] 发送失败 errcode=${data.errcode}`);
   }
 }
 
 // ── 主流程 ──────────────────────────────────────────
 async function main() {
   if (!getCookieValue("MUSIC_U")) {
-    console.warn("警告: 未找到 MUSIC_U cookie, session 可能已过期");
+    console.warn("⚠️ 未找到 MUSIC_U cookie，session 可能已过期");
   }
 
-  console.log("--- 云贝签到 ---");
   await cloudSignIn();
 
-  console.log("\n--- VIP 签到 ---");
+  let vipLevel = "";
   const vipInfo = await getVipInfo();
   if (vipInfo) {
+    vipLevel = vipInfo.userLevel.levelName;
+    record("VIP 状态", true, `${vipLevel}　成长值 ${vipInfo.userLevel.growthPoint}`);
     await vipSignIn();
     await claimRewards();
+  } else {
+    record("VIP 签到", false, "查询失败或非会员");
   }
+
+  await sendDingTalk(vipLevel);
 }
 
 main().catch((err) => {
