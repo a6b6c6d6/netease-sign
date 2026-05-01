@@ -111,15 +111,25 @@ async function sendDingTalk(levelName) {
     `> 🤖 [netease-sign](https://github.com/a6b6c6d6/netease-sign) · GitHub Actions`,
   ].join("\n");
 
-  const body = JSON.stringify({
-    msgtype: "markdown",
-    markdown: { title: `签到报告 ${dateStr}`, text },
-  });
+  let url = DT_WEBHOOK;
+  const secret = process.env.DINGTALK_SECRET;
+  if (secret) {
+    const timestamp = Date.now();
+    const crypto = require("crypto");
+    const sign = crypto
+      .createHmac("sha256", secret)
+      .update(timestamp + "\n" + secret)
+      .digest("base64");
+    url += `&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`;
+  }
 
-  const res = await fetch(DT_WEBHOOK, {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body,
+    body: JSON.stringify({
+      msgtype: "markdown",
+      markdown: { title: `签到报告 ${dateStr}`, text },
+    }),
   });
   const data = await res.json();
   if (data.errcode === 0) {

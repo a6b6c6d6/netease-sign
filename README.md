@@ -39,6 +39,7 @@
 |------|-------|
 | `NETEASE_COOKIE` | 上面复制的 Cookie 字符串（必填） |
 | `DINGTALK_WEBHOOK` | 钉钉机器人 Webhook 地址（选填） |
+| `DINGTALK_SECRET` | 钉钉机器人加签密钥（选填，开了加签必填） |
 
 ### 3. 触发运行
 
@@ -47,9 +48,12 @@
 
 ## 钉钉通知设置（可选）
 
-1. 在钉钉群里添加一个自定义机器人
-2. 获取 Webhook 地址（类似 `https://oapi.dingtalk.com/robot/send?access_token=xxx`）
-3. 添加到 GitHub Secrets，Name 填 `DINGTALK_WEBHOOK`
+1. 在钉钉群里添加一个**自定义机器人**
+2. 安全设置勾选**加签**，复制生成的 `SEC` 开头的密钥
+3. 获取 Webhook 地址（`https://oapi.dingtalk.com/robot/send?access_token=xxx`）
+4. 到 GitHub Secrets 添加：
+   - `DINGTALK_WEBHOOK` → 粘贴 Webhook 地址
+   - `DINGTALK_SECRET` → 粘贴加签密钥（没开启加签则不填）
 
 设置后每次签到完成会推送类似这样的消息：
 
