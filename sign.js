@@ -145,6 +145,7 @@ async function sendDingTalk() {
     lines.push(
       ``,
       `**👑 VIP 签到**`,
+      `🏷️ ${state.vipLevel}`,
       `📊 当前成长值 ${state.vipGrowth}`,
       `${state.vipSign.ok ? "✅" : "❌"} 签到${state.vipSign.ok ? "" : " — " + state.vipSign.text}`,
       `${state.vipReward.ok ? "✅" : "❌"} 成长值 ${state.vipReward.text}`
