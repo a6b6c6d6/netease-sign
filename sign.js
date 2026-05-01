@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 const COOKIE = process.env.NETEASE_COOKIE;
 const DT_WEBHOOK = process.env.DINGTALK_WEBHOOK;
 const UA =
@@ -115,7 +117,6 @@ async function sendDingTalk(levelName) {
   const secret = process.env.DINGTALK_SECRET;
   if (secret) {
     const timestamp = Date.now();
-    const crypto = require("crypto");
     const sign = crypto
       .createHmac("sha256", secret)
       .update(timestamp + "\n" + secret)
