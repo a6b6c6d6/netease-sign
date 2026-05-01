@@ -1,0 +1,19 @@
+name: Netease Daily Sign
+
+  on:
+    schedule:
+      - cron: "5 16 * * *"
+    workflow_dispatch:
+
+  jobs:
+    sign:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-node@v4
+          with:
+            node-version: "20"
+        - name: Run sign
+          run: node sign.js
+          env:
+            NETEASE_COOKIE: ${{ secrets.NETEASE_COOKIE }}
