@@ -15,11 +15,63 @@ function getCookieValue(name) {
   return match ? match[1] : "";
 }
 
+function randomChineseIP() {
+  const prefixes = ["118.31", "119.23", "123.56", "47.92", "39.96", "47.100", "120.25", "112.126"];
+  const p = prefixes[Math.floor(Math.random() * prefixes.length)];
+  return p + "." + Math.floor(Math.random() * 256) + "." + Math.floor(Math.random() * 256);
+}
+
 const headers = {
   Cookie: COOKIE,
   "User-Agent": UA,
   Referer: "https://music.163.com/",
+  Origin: "https://music.163.com",
+  "X-Real-IP": randomChineseIP(),
 };
+
+// ── Weapi 加密 ──────────────────────────────────────────
+const presetKey = Buffer.from("0CoJUm6Qyw8W8jud");
+const aesIv = Buffer.from("0102030405060708");
+const modulusHex =
+  "00e0b509f6259df8642dbc35662901477df22677ec152b5ff68ace615bb7b725152b3ab17a876aea8a5aa76d2e417629ec4ee341f56135fccf695280104e0312ecbda92557c93870114af6c9d05c4f7f0c3685b7a46bee255932575cce10b424d813cfe4875d3e82047b97ddef52741d546b8e289dc6935b3ece0462db0a22b8e7";
+
+function modPow(base, exp, mod) {
+  let result = 1n;
+  base = base % mod;
+  while (exp > 0n) {
+    if (exp & 1n) result = (result * base) % mod;
+    exp >>= 1n;
+    base = (base * base) % mod;
+  }
+  return result;
+}
+
+function randomSecret(size = 16) {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const bytes = crypto.randomBytes(size);
+  let s = "";
+  for (let i = 0; i < size; i++) s += chars[bytes[i] % chars.length];
+  return s;
+}
+
+function aesEncrypt(text, key) {
+  const cipher = crypto.createCipheriv("aes-128-cbc", key, aesIv);
+  return cipher.update(text, "utf8", "base64") + cipher.final("base64");
+}
+
+function rsaEncrypt(text) {
+  const reversed = text.split("").reverse().join("");
+  const m = BigInt("0x" + Buffer.from(reversed, "utf8").toString("hex"));
+  const n = BigInt("0x" + modulusHex);
+  return modPow(m, 0x010001n, n).toString(16).padStart(256, "0");
+}
+
+function weapiEncrypt(data) {
+  const secKey = randomSecret(16);
+  let params = aesEncrypt(JSON.stringify(data), presetKey);
+  params = aesEncrypt(params, Buffer.from(secKey));
+  return { params, encSecKey: rsaEncrypt(secKey) };
+}
 
 // ── 状态收集 ──────────────────────────────────────────
 const state = {
@@ -36,18 +88,23 @@ function log(tag, msg) {
 
 // ── 云贝签到 ──────────────────────────────────────────
 async function cloudSignIn() {
+  const { params, encSecKey } = weapiEncrypt({ type: "1" });
   const csrfToken = getCookieValue("__csrf");
-  const body = new URLSearchParams();
-  body.append("type", "1");
-  if (csrfToken) body.append("csrf_token", csrfToken);
+  const url = `https://music.163.com/weapi/point/dailyTask${csrfToken ? "?csrf_token=" + csrfToken : ""}`;
 
   let data;
   try {
-    const res = await fetch("https://music.163.com/api/point/dailyTask", {
+    const res = await fetch(url, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" },
-      body,
+      body: new URLSearchParams({ params, encSecKey }),
     });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      state.cloud = { ok: false, text: `HTTP ${res.status}` };
+      log("云贝签到", `请求失败 HTTP ${res.status} ${text.slice(0, 200)}`);
+      return;
+    }
     data = await res.json();
   } catch (e) {
     state.cloud = { ok: false, text: "请求失败" };
@@ -131,12 +188,13 @@ async function sendDingTalk() {
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-  const lines = [`### 📋 网易云音乐签到报告`, ``, `**📅 ${dateStr}**`];
+  const lines = [`## 📋 网易云音乐签到报告`, ``, `**日期：** ${dateStr}`, ``, `---`];
 
   // 云贝
   lines.push(
     ``,
-    `**☁️ 云贝签到**`,
+    `### ☁️ 云贝签到`,
+    ``,
     `${state.cloud.ok ? "✅" : "❌"} ${state.cloud.text}`
   );
 
@@ -144,14 +202,17 @@ async function sendDingTalk() {
   if (state.vipLevel) {
     lines.push(
       ``,
-      `**👑 VIP 签到**`,
-      `🏷️ ${state.vipLevel}`,
-      `📊 当前成长值 ${state.vipGrowth}`,
-      `${state.vipSign.ok ? "✅" : "❌"} 签到${state.vipSign.ok ? "" : " — " + state.vipSign.text}`,
-      `${state.vipReward.ok ? "✅" : "❌"} 成长值 ${state.vipReward.text}`
+      `---`,
+      ``,
+      `### 👑 VIP 信息`,
+      ``,
+      `🏷️ **会员等级：** ${state.vipLevel}`,
+      `📊 **当前成长值：** ${state.vipGrowth}`,
+      `✅ **VIP 签到：** ${state.vipSign.ok ? "成功" : "失败 — " + state.vipSign.text}`,
+      `🎁 **成长值领取：** ${state.vipReward.ok ? "已领取" : state.vipReward.text}`
     );
   } else {
-    lines.push(``, `**👑 VIP 签到**`, `❌ 非会员或查询失败`);
+    lines.push(``, `---`, ``, `### 👑 VIP 信息`, ``, `❌ 非会员或查询失败`);
   }
 
   lines.push(``, `---`, ``, `> 🤖 [netease-sign](https://github.com/a6b6c6d6/netease-sign)`);
@@ -172,7 +233,7 @@ async function sendDingTalk() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       msgtype: "markdown",
-      markdown: { title: `签到报告 ${dateStr}`, text: lines.join("\n") },
+      markdown: { title: `签到报告 ${dateStr}`, text: lines.join("<br/>") },
     }),
   });
   const data = await res.json();
@@ -187,6 +248,9 @@ async function sendDingTalk() {
 async function main() {
   if (!getCookieValue("MUSIC_U")) {
     console.warn("⚠️ 未找到 MUSIC_U cookie，session 可能已过期");
+  }
+  if (!getCookieValue("__csrf")) {
+    console.warn("⚠️ 未找到 __csrf cookie，云贝签到可能失败");
   }
 
   await cloudSignIn();
