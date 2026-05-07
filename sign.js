@@ -186,36 +186,37 @@ async function sendDingTalk() {
   if (!DT_WEBHOOK) return;
 
   const now = new Date();
-  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const pad = (n) => String(n).padStart(2, "0");
+  const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const weekDays = ["日", "一", "二", "三", "四", "五", "六"];
+  const weekDay = weekDays[now.getDay()];
+  const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
-  const lines = [`## 📋 网易云音乐签到报告`, ``, `**日期：** ${dateStr}`, ``, `---`];
-
-  // 云贝
-  lines.push(
+  const lines = [
+    `### 🎵 网易云音乐签到报告`,
     ``,
-    `### ☁️ 云贝签到`,
+    `> 📅 ${dateStr} 星期${weekDay}　　🕐 ${timeStr}`,
     ``,
-    `${state.cloud.ok ? "✅" : "❌"} ${state.cloud.text}`
-  );
+    `---`,
+    ``,
+    `**☁️ 云贝签到**　　${state.cloud.ok ? "✅" : "❌"} ${state.cloud.text}`,
+  ];
 
-  // VIP
   if (state.vipLevel) {
     lines.push(
       ``,
       `---`,
       ``,
-      `### 👑 VIP 信息`,
+      `**👑 VIP 会员**　　🏷️ ${state.vipLevel}　　📊 成长值 **${state.vipGrowth}**`,
       ``,
-      `🏷️ **会员等级：** ${state.vipLevel}`,
-      `📊 **当前成长值：** ${state.vipGrowth}`,
-      `✅ **VIP 签到：** ${state.vipSign.ok ? "成功" : "失败 — " + state.vipSign.text}`,
-      `🎁 **成长值领取：** ${state.vipReward.ok ? "已领取" : state.vipReward.text}`
+      `> ${state.vipSign.ok ? "✅" : "❌"} VIP签到：${state.vipSign.ok ? "成功" : "失败 — " + state.vipSign.text}`,
+      `> ${state.vipReward.ok ? "🎁" : "⚠️"} 成长值领取：${state.vipReward.text}`
     );
   } else {
-    lines.push(``, `---`, ``, `### 👑 VIP 信息`, ``, `❌ 非会员或查询失败`);
+    lines.push(``, `---`, ``, `**👑 VIP 会员**　　❌ 非会员或查询失败`);
   }
 
-  lines.push(``, `---`, ``, `> 🤖 [netease-sign](https://github.com/a6b6c6d6/netease-sign)`);
+  lines.push(``, `---`);
 
   let url = DT_WEBHOOK;
   const secret = process.env.DINGTALK_SECRET;
