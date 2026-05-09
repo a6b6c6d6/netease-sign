@@ -2,8 +2,7 @@ import crypto from "crypto";
 
 const COOKIE = process.env.NETEASE_COOKIE;
 const DT_WEBHOOK = process.env.DINGTALK_WEBHOOK;
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 if (!COOKIE) {
   console.error("Error: NETEASE_COOKIE environment variable is not set.");
@@ -29,7 +28,7 @@ const headers = {
   "X-Real-IP": randomChineseIP(),
 };
 
-// ── Weapi 加密 ──────────────────────────────────────────
+// ── Weapi 加密 ─────────────────────────────────────
 const presetKey = Buffer.from("0CoJUm6Qyw8W8jud");
 const aesIv = Buffer.from("0102030405060708");
 const modulusHex =
@@ -73,7 +72,7 @@ function weapiEncrypt(data) {
   return { params, encSecKey: rsaEncrypt(secKey) };
 }
 
-// ── 状态收集 ──────────────────────────────────────────
+// ── 状态收集 ──────────────────────────────────────
 const state = {
   cloud: { ok: false, text: "" },
   vipLevel: "",
@@ -86,7 +85,7 @@ function log(tag, msg) {
   console.log(`[${tag}] ${msg}`);
 }
 
-// ── 云贝签到 ──────────────────────────────────────────
+// ── 云贝签到 ──────────────────────────────────────
 async function cloudSignIn() {
   const { params, encSecKey } = weapiEncrypt({ type: "1" });
   const csrfToken = getCookieValue("__csrf");
@@ -124,11 +123,11 @@ async function cloudSignIn() {
   }
 }
 
-// ── VIP 信息查询 ──────────────────────────────────────
+// ── VIP 信息查询 ──────────────────────────────────
 async function getVipInfo() {
   try {
     const res = await fetch(
-      "https://music.163.com/api/vipnewcenter/app/level/growhpoint/basic",
+      "https://music.163.com/api/vipnewcenter/app/level/growthpoint/basic",
       { method: "POST", headers }
     );
     const data = await res.json();
@@ -139,7 +138,7 @@ async function getVipInfo() {
   }
 }
 
-// ── VIP 签到 ──────────────────────────────────────────
+// ── VIP 签到 ──────────────────────────────────────
 async function vipSignIn() {
   try {
     const res = await fetch("https://music.163.com/api/vip-center-bff/task/sign", {
@@ -160,7 +159,7 @@ async function vipSignIn() {
   }
 }
 
-// ── VIP 成长值领取 ────────────────────────────────────
+// ── VIP 成长值领取 ────────────────────────────────
 async function claimRewards() {
   try {
     const res = await fetch(
@@ -172,8 +171,8 @@ async function claimRewards() {
       state.vipReward = { ok: true, text: "已领取" };
       log("VIP成长值", "领取成功");
     } else {
-      state.vipReward = { ok: true, text: "无可领取" };
-      log("VIP成长值", "无可领取");
+      state.vipReward = { ok: true, text: "无奖励可领" };
+      log("VIP成长值", "无奖励可领");
     }
   } catch (e) {
     state.vipReward = { ok: false, text: "请求失败" };
@@ -181,7 +180,7 @@ async function claimRewards() {
   }
 }
 
-// ── 钉钉通知 ──────────────────────────────────────────
+// ── 钉钉通知（移动端优化版）──────────────────────
 async function sendDingTalk() {
   if (!DT_WEBHOOK) return;
 
@@ -192,31 +191,32 @@ async function sendDingTalk() {
   const weekDay = weekDays[now.getDay()];
   const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
+  // 移动端钉钉 markdown 优化格式：
+  // - 不用 <br/>，用 \n\n 分隔段落
+  // - 不用 --- 分隔线，用文字分隔
+  // - 不用 > 引用样式
   const lines = [
-    `### 🎵 网易云音乐签到报告`,
+    `### 🎵 网易云音乐签到`,
     ``,
-    `> 📅 ${dateStr} 星期${weekDay}　　🕐 ${timeStr}`,
+    `📅 ${dateStr} 星期${weekDay}　🕐 ${timeStr}`,
     ``,
-    `---`,
-    ``,
-    `**☁️ 云贝签到**　　${state.cloud.ok ? "✅" : "❌"} ${state.cloud.text}`,
+    `☁️ 云贝签到　${state.cloud.ok ? "✅" : "❌"} ${state.cloud.text}`,
   ];
 
   if (state.vipLevel) {
     lines.push(
       ``,
-      `---`,
+      `👑 VIP 会员　🏷️ ${state.vipLevel}　📊 成长值 ${state.vipGrowth}`,
       ``,
-      `**👑 VIP 会员**　　🏷️ ${state.vipLevel}　　📊 成长值 **${state.vipGrowth}**`,
-      ``,
-      `> ${state.vipSign.ok ? "✅" : "❌"} VIP签到：${state.vipSign.ok ? "成功" : "失败 — " + state.vipSign.text}`,
-      `> ${state.vipReward.ok ? "🎁" : "⚠️"} 成长值领取：${state.vipReward.text}`
+      `✅/❌ VIP签到　${state.vipSign.ok ? "成功" : "失败"}` + (state.vipSign.text && state.vipSign.text !== "success" ? `（${state.vipSign.text}）` : ``),
+      `🎁 成长值领取　${state.vipReward.ok ? state.vipReward.text : "失败"}`,
     );
   } else {
-    lines.push(``, `---`, ``, `**👑 VIP 会员**　　❌ 非会员或查询失败`);
+    lines.push(``, `👑 VIP 会员　❌ 非会员或查询失败`);
   }
 
-  lines.push(``, `---`);
+  // 钉钉 markdown：用 \n 作为换行（钉钉会渲染为换行）
+  const text = lines.join("\n");
 
   let url = DT_WEBHOOK;
   const secret = process.env.DINGTALK_SECRET;
@@ -234,7 +234,10 @@ async function sendDingTalk() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       msgtype: "markdown",
-      markdown: { title: `签到报告 ${dateStr}`, text: lines.join("<br/>") },
+      markdown: {
+        title: `网易云签到 ${dateStr}`,
+        text: text,
+      },
     }),
   });
   const data = await res.json();
@@ -245,7 +248,7 @@ async function sendDingTalk() {
   }
 }
 
-// ── 主流程 ──────────────────────────────────────────
+// ── 主流程 ──────────────────────────────────────
 async function main() {
   if (!getCookieValue("MUSIC_U")) {
     console.warn("⚠️ 未找到 MUSIC_U cookie，session 可能已过期");
