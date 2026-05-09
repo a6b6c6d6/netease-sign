@@ -74,7 +74,7 @@ function weapiEncrypt(data) {
 
 // ── 状态收集 ──────────────────────────────────────
 const state = {
-  cloud: { ok: false, text: "" },
+  cloud: { ok: false, text: "", point: 0, balance: null },
   vipLevel: "",
   vipGrowth: 0,
   vipSign: { ok: false, text: "" },
@@ -83,6 +83,26 @@ const state = {
 
 function log(tag, msg) {
   console.log(`[${tag}] ${msg}`);
+}
+
+// ── 云贝余额查询 ──────────────────────────────────
+async function getCloudBalance() {
+  try {
+    const { params, encSecKey } = weapiEncrypt({});
+    const res = await fetch("https://music.163.com/weapi/v1/user/cloud/bei/get", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ params, encSecKey }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.code === 200 && data.data) {
+      return data.data.cloudBei || data.data.total || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // ── 云贝签到 ──────────────────────────────────────
@@ -100,25 +120,30 @@ async function cloudSignIn() {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      state.cloud = { ok: false, text: `HTTP ${res.status}` };
+      state.cloud = { ok: false, text: `HTTP ${res.status}`, point: 0, balance: null };
       log("云贝签到", `请求失败 HTTP ${res.status} ${text.slice(0, 200)}`);
       return;
     }
     data = await res.json();
   } catch (e) {
-    state.cloud = { ok: false, text: "请求失败" };
+    state.cloud = { ok: false, text: "请求失败", point: 0, balance: null };
     log("云贝签到", "请求失败 " + e.message);
     return;
   }
 
+  // 查询云贝余额
+  const balance = await getCloudBalance();
+  state.cloud.balance = balance;
+
   if (data.code === 200) {
-    state.cloud = { ok: true, text: `+${data.point || 0} 云贝` };
-    log("云贝签到", `成功, +${data.point || 0} 云贝`);
+    const point = data.point || 0;
+    state.cloud = { ok: true, text: `+${point} 云贝`, point, balance };
+    log("云贝签到", `成功, +${point} 云贝, 余额 ${balance !== null ? balance : "未知"}`);
   } else if (data.code === -2) {
-    state.cloud = { ok: true, text: "今日已签到" };
-    log("云贝签到", "今天已签到");
+    state.cloud = { ok: true, text: "今日已签到", point: 0, balance };
+    log("云贝签到", `今天已签到, 余额 ${balance !== null ? balance : "未知"}`);
   } else {
-    state.cloud = { ok: false, text: `code=${data.code}` };
+    state.cloud = { ok: false, text: `code=${data.code}`, point: 0, balance };
     log("云贝签到", `失败 code=${data.code}`);
   }
 }
@@ -191,16 +216,18 @@ async function sendDingTalk() {
   const weekDay = weekDays[now.getDay()];
   const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
-  // 移动端钉钉 markdown 优化格式：
-  // - 不用 <br/>，用 \n\n 分隔段落
-  // - 不用 --- 分隔线，用文字分隔
-  // - 不用 > 引用样式
+  // 云贝通知文案
+  let cloudText = state.cloud.text;
+  if (state.cloud.balance !== null) {
+    cloudText += `　💰 余额 ${state.cloud.balance}`;
+  }
+
   const lines = [
     `### 🎵 网易云音乐签到`,
     ``,
     `📅 ${dateStr} 星期${weekDay}　🕐 ${timeStr}`,
     ``,
-    `☁️ 云贝签到　${state.cloud.ok ? "✅" : "❌"} ${state.cloud.text}`,
+    `☁️ 云贝签到　${state.cloud.ok ? "✅" : "❌"} ${cloudText}`,
   ];
 
   if (state.vipLevel) {
@@ -215,7 +242,6 @@ async function sendDingTalk() {
     lines.push(``, `👑 VIP 会员　❌ 非会员或查询失败`);
   }
 
-  // 钉钉 markdown：用 \n 作为换行（钉钉会渲染为换行）
   const text = lines.join("\n");
 
   let url = DT_WEBHOOK;
