@@ -17,6 +17,7 @@ jobs:
       - name: Run sign
         run: node sign.js
         env:
+          TZ: Asia/Shanghai
           NETEASE_COOKIE: ${{ secrets.NETEASE_COOKIE }}
           DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
