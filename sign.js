@@ -209,36 +209,53 @@ async function sendDingTalk() {
   if (!DT_WEBHOOK) return;
 
   const now = new Date();
+  const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const weekDay = weekdays[now.getDay()];
 
-  const lines = [`## 📋 网易云音乐签到报告`, ``, `**日期：** ${dateStr}`, ``, `---`];
-
-  // 云贝
-  lines.push(
+  // 钉钉 markdown：用 \n 换行（不用 <br/>），手机端更美观
+  // 钉钉不支持表格，用引用块和列表排版
+  const md = [
+    `## 🎵 网易云音乐签到`,
     ``,
-    `### ☁️ 云贝签到`,
+    `> 📅 ${dateStr} 星期${weekDay}`,
     ``,
-    `${state.cloud.ok ? "✅" : "❌"} ${state.cloud.text}`
-  );
+    `---`,
+    ``,
+    `☁️ **云贝签到**`,
+    ``,
+    `${state.cloud.ok ? "✅" : "❌"} ${state.cloud.text}`,
+  ];
 
-  // VIP
   if (state.vipLevel) {
-    lines.push(
+    md.push(
       ``,
       `---`,
       ``,
-      `### 👑 VIP 信息`,
+      `👑 **VIP 会员**`,
       ``,
-      `🏷️ **会员等级：** ${state.vipLevel}`,
-      `📊 **当前成长值：** ${state.vipGrowth}`,
-      `✅ **VIP 签到：** ${state.vipSign.ok ? "成功" : "失败 — " + state.vipSign.text}`,
-      `🎁 **成长值领取：** ${state.vipReward.ok ? "已领取" : state.vipReward.text}`
+      `> 🏷️ ${state.vipLevel}  📊 成长值 ${state.vipGrowth}`,
+      ``,
+      `${state.vipSign.ok ? "✅" : "❌"} VIP签到：${state.vipSign.ok ? "成功" : state.vipSign.text}`,
+      `${state.vipReward.text !== "-" ? (state.vipReward.ok ? "🎁" : "❌") : "  "} 成长值：${state.vipReward.ok ? state.vipReward.text : state.vipReward.text}`
     );
   } else {
-    lines.push(``, `---`, ``, `### 👑 VIP 信息`, ``, `❌ 非会员或查询失败`);
+    md.push(
+      ``,
+      `---`,
+      ``,
+      `👑 **VIP 会员**`,
+      ``,
+      `❌ 非会员或查询失败`
+    );
   }
 
-  lines.push(``, `---`, ``, `> 🤖 [netease-sign](https://github.com/a6b6c6d6/netease-sign)`);
+  md.push(
+    ``,
+    `---`,
+    ``,
+    `🤖 [netease-sign](https://github.com/a6b6c6d6/netease-sign)`
+  );
 
   let url = DT_WEBHOOK;
   const secret = process.env.DINGTALK_SECRET;
@@ -256,7 +273,7 @@ async function sendDingTalk() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       msgtype: "markdown",
-      markdown: { title: `签到报告 ${dateStr}`, text: lines.join("<br/>") },
+      markdown: { title: `🎵 签到报告 ${dateStr}`, text: md.join("\n") },
     }),
   });
   const data = await res.json();
