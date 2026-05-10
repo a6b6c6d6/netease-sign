@@ -115,12 +115,13 @@ async function cloudSignIn() {
   if (data.code === 200) {
     state.cloud = { ok: true, text: `+${data.point || 0} 云贝` };
     log("云贝签到", `成功, +${data.point || 0} 云贝`);
-  } else if (data.code === -2) {
+  } else if (data.code === -2 || data.code === 403) {
+    // -2: 传统"今日已签到" | 403: 网易云新返回码(也是已签到)
     state.cloud = { ok: true, text: "今日已签到" };
     log("云贝签到", "今天已签到");
   } else {
     state.cloud = { ok: false, text: `code=${data.code}` };
-    log("云贝签到", `失败 code=${data.code}`);
+    log("云贝签到", `失败 code=${data.code}`);;
   }
 }
 
