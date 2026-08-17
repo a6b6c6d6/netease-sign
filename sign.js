@@ -75,7 +75,8 @@ function weapiEncrypt(data) {
 
 // ── 状态收集 ──────────────────────────────────────────
 const state = {
-  cloud: { ok: false, text: "" },
+  cloudAndroid: { ok: false, text: "" }, // 手机端(安卓)签到
+  cloudWeb: { ok: false, text: "" }, // 网页端签到
   vipLevel: "",
   vipGrowth: 0,
   vipSign: { ok: false, text: "" },
@@ -87,8 +88,10 @@ function log(tag, msg) {
 }
 
 // ── 云贝签到 ──────────────────────────────────────────
-async function cloudSignIn() {
-  const { params, encSecKey } = weapiEncrypt({ type: "1" });
+// type: "0" 手机端(安卓, 3 云贝) | "1" 网页端(2 云贝)
+// 两者共用同一个 weapi 接口和同一套加密，仅 type 参数不同
+async function cloudSignIn(type, label) {
+  const { params, encSecKey } = weapiEncrypt({ type });
   const csrfToken = getCookieValue("__csrf");
   const url = `https://music.163.com/weapi/point/dailyTask${csrfToken ? "?csrf_token=" + csrfToken : ""}`;
 
@@ -101,27 +104,25 @@ async function cloudSignIn() {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      state.cloud = { ok: false, text: `HTTP ${res.status}` };
-      log("云贝签到", `请求失败 HTTP ${res.status} ${text.slice(0, 200)}`);
-      return;
+      log(label, `请求失败 HTTP ${res.status} ${text.slice(0, 200)}`);
+      return { ok: false, text: `HTTP ${res.status}` };
     }
     data = await res.json();
   } catch (e) {
-    state.cloud = { ok: false, text: "请求失败" };
-    log("云贝签到", "请求失败 " + e.message);
-    return;
+    log(label, "请求失败 " + e.message);
+    return { ok: false, text: "请求失败" };
   }
 
   if (data.code === 200) {
-    state.cloud = { ok: true, text: `+${data.point || 0} 云贝` };
-    log("云贝签到", `成功, +${data.point || 0} 云贝`);
+    log(label, `成功, +${data.point || 0} 云贝`);
+    return { ok: true, text: `+${data.point || 0} 云贝` };
   } else if (data.code === -2 || data.code === 403) {
     // -2: 传统"今日已签到" | 403: 网易云新返回码(也是已签到)
-    state.cloud = { ok: true, text: "今日已签到" };
-    log("云贝签到", "今天已签到");
+    log(label, "今天已签到");
+    return { ok: true, text: "今日已签到" };
   } else {
-    state.cloud = { ok: false, text: `code=${data.code}` };
-    log("云贝签到", `失败 code=${data.code}`);;
+    log(label, `失败 code=${data.code}`);
+    return { ok: false, text: `code=${data.code}` };
   }
 }
 
@@ -224,7 +225,8 @@ async function sendDingTalk() {
     ``,
     `☁️ **云贝签到**`,
     ``,
-    `${state.cloud.ok ? "✅" : "❌"} ${state.cloud.text}`,
+    `📱 手机端：${state.cloudAndroid.ok ? "✅" : "❌"} ${state.cloudAndroid.text}`,
+    `💻 网页端：${state.cloudWeb.ok ? "✅" : "❌"} ${state.cloudWeb.text}`,
   ];
 
   if (state.vipLevel) {
@@ -293,7 +295,9 @@ async function main() {
     console.warn("⚠️ 未找到 __csrf cookie，云贝签到可能失败");
   }
 
-  await cloudSignIn();
+  // 手机端(安卓) + 网页端 都签一遍
+  state.cloudAndroid = await cloudSignIn("0", "云贝签到(手机端)");
+  state.cloudWeb = await cloudSignIn("1", "云贝签到(网页端)");
 
   const vipInfo = await getVipInfo();
   if (vipInfo) {
